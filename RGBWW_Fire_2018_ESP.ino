@@ -8,7 +8,6 @@
 //---------------------------------------ESP WEBSERVER STUFF---------------------------
 #include <ESP8266WiFi.h>
 #include <FS.h>   //Include File System Headers
-#include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
@@ -19,6 +18,13 @@
 const char* ssid = "BRFK-NNyI";
 const char* password = "ingyenwifi";
 const char* host = "torch1";
+
+const char* softapssid = "Torch1";
+
+IPAddress local_IP(192,168,4,1);
+IPAddress gateway(192,168,4,1);
+IPAddress subnet(255,255,255,0);
+
 
 ESP8266WebServer server(80);
 //holds the current upload
@@ -428,6 +434,17 @@ void setup() {
     DBG_OUTPUT_PORT.printf("\n");
   }
 
+  //SoftAP init:
+
+  
+  Serial.print("Setting soft-AP configuration ... ");
+  Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Ready" : "Failed!");
+
+  Serial.print("Setting soft-AP ... ");
+  Serial.println(WiFi.softAP(softapssid) ? "Ready" : "Failed!");
+
+  Serial.print("Soft-AP IP address = ");
+  Serial.println(WiFi.softAPIP());
 
   //WIFI INIT
   DBG_OUTPUT_PORT.printf("Connecting to %s\n", ssid);
@@ -436,9 +453,12 @@ void setup() {
     WiFi.begin(ssid, password);
   }
 
+  int attempts = 0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     DBG_OUTPUT_PORT.print(".");
+    attempts++;
+    if (attempts > 20) break;
   }
   DBG_OUTPUT_PORT.println("");
   DBG_OUTPUT_PORT.print("Connected! IP address: ");
@@ -546,7 +566,7 @@ void Fire2018() {
       noise[i][j] = data >> 8;
     }
   }
-
+yield();
 
   // Draw the first (lowest) line - seed the fire.
   // It could be random pixels or anything else as well.
@@ -564,7 +584,7 @@ void Fire2018() {
       heat[XY(x, y)] = heat[XY(x, y + 1)];
     }
   }
-
+yield();
   // Scale the heatmap values down based on the independent scrolling noise array.
   for (uint8_t y = 0; y < Height - 1; y++) {
     for (uint8_t x = 0; x < Width; x++) {
@@ -588,7 +608,7 @@ void Fire2018() {
       heat[XY(x, y)] = scale8(heat[XY(x, y)] , dim);
     }
   }
-
+yield();
   // Now just map the colors based on the heatmap.
   for (uint8_t y = 0; y < Height - 1; y++) {
     for (uint8_t x = 0; x < Width; x++) {
@@ -604,10 +624,11 @@ void Fire2018() {
   for (uint8_t i = 0; i < 60; i++){
 	strip.setPixelColor(i,strip.getPixelColor(i+4)); 
   }
-  
+  yield();
   strip.show();
-  deltat = micros() - starttime; //takes about 10ms to update :/
 
+  deltat = micros() - starttime; //takes about 10ms to update :/
+  yield();
   // I hate this delay but with 8 bit scaling there is no way arround.
   // If the framerate gets too high the frame by frame scaling doesn´s work anymore.
   // Basically it does but it´s impossible to see then...
@@ -654,7 +675,7 @@ void Fire2018() {
   // If you change the framerate here you need to adjust the
   // y speed and the dim divisor, too.
   delay(delaytime);
-  
+  yield();
   if ((last_web_update + web_update_timeout) <millis()){
 	  last_web_update = 0x7FFFFFFF; //so we dont keep saving shit
 	  char fn[40];
