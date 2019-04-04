@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Grapick Dev</title>
+    <link rel="stylesheet" href="grapick.min.css">
+    <script src="grapick.min.js"></script>
+    <!-- <link href="https://fonts.googleapis.com/css?family=Romanesco" rel="stylesheet"> -->
+  </head>
+  <body>
+    <style>
+    html {
+      height: 100%
+    }
+    body {
+        background-color: #aaa;
+    }
+
+    .container {
+      position: absolute;
+      width: 300px;
+      height: 200px;
+      left: 0;
+      right: 0;
+      margin: auto;
+      top: 0;
+      bottom: 0;
+    }
+
+    .brand {
+      user-select: none;
+      margin: -12rem 0 3rem;
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 50;
+      color: white;
+      <!-- font-family: 'Romanesco', cursive; -->
+      /*text-shadow: 2px 0 0 #555, -2px 0 0 #555, 0 2px 0 #555, 0 -2px 0 #555, 1px 1px #555, -1px -1px 0 #555, 1px -1px 0 #555, -1px 1px 0 #555;*/
+    }
+
+    .grapick-cont {
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+      border-radius: 3px;
+      margin: -15px;
+      padding: 25px 15px;
+      width: 100%;
+      height: 100px;
+      background: white;
+    }
+
+    .grp-preview {
+      border-radius: 3px;
+    }
+
+    .inputs {
+      margin: 25px 0px 15px;
+    }
+
+    .form-control {
+      background-color: transparent;
+      border: 1px solid #ccc;
+      height: 30px;
+      width: 49%;
+    }
+    .custom-range {
+      background-color: transparent;
+      border: 1px solid #111;
+      height: 30px;
+      width: 49%;
+    }
+    </style>
+    <div class="container">
+      <h1 class="brand">Grapick</h1>
+      <div class="grapick-cont">
+          <div id="grapick1"></div>
+          <div class="inputs">
+            <select class="form-control" id="switch-type">
+              <option value="">- Select Type -</option>
+              <option value="radial">Radial</option>
+              <option value="linear">Linear</option>
+              <option value="repeating-radial">Repeating Radial</option>
+              <option value="repeating-linear">Repeating Linear</option>
+            </select>
+
+            <select class="form-control" id="switch-angle">
+              <option value="">- Select Direction -</option>
+              <option value="top">Top</option>
+              <option value="right">Right</option>
+              <option value="center">Center</option>
+              <option value="bottom">Bottom</option>
+              <option value="left">Left</option>
+            </select>
+			<label for="customRange2">Example range</label>
+			<input type="range" class="custom-range" min="0" max="5" id="customRange2">
+			<input type="button" class="button-css" id="btn1" value = "Go">
+          </div>
+      </div>
+      <div class="grapick-cont">
+          <div id="grapick2"></div>
+          <div class="inputs">
+            <select class="form-control" id="switch-type">
+              <option value="">- Select Type -</option>
+              <option value="radial">Radial</option>
+              <option value="linear">Linear</option>
+              <option value="repeating-radial">Repeating Radial</option>
+              <option value="repeating-linear">Repeating Linear</option>
+            </select>
+
+            <select class="form-control" id="switch-angle">
+              <option value="">- Select Direction -</option>
+              <option value="top">Top</option>
+              <option value="right">Right</option>
+              <option value="center">Center</option>
+              <option value="bottom">Bottom</option>
+              <option value="left">Left</option>
+            </select>
+          </div>
+      </div>
+      <div class="grapick-cont">
+          <div id="grapick3"></div>
+          <div class="inputs">
+            <select class="form-control" id="switch-type">
+              <option value="">- Select Type -</option>
+              <option value="radial">Radial</option>
+              <option value="linear">Linear</option>
+              <option value="repeating-radial">Repeating Radial</option>
+              <option value="repeating-linear">Repeating Linear</option>
+            </select>
+
+            <select class="form-control" id="switch-angle">
+              <option value="">- Select Direction -</option>
+              <option value="top">Top</option>
+              <option value="right">Right</option>
+              <option value="center">Center</option>
+              <option value="bottom">Bottom</option>
+              <option value="left">Left</option>
+            </select>
+          </div>
+      </div>
+      <div class="grapick-cont">
+          <div id="grapick4"></div>
+          <div class="inputs">
+            <select class="form-control" id="switch-type">
+              <option value="">- Select Type -</option>
+              <option value="radial">Radial</option>
+              <option value="linear">Linear</option>
+              <option value="repeating-radial">Repeating Radial</option>
+              <option value="repeating-linear">Repeating Linear</option>
+            </select>
+
+            <select class="form-control" id="switch-angle">
+              <option value="">- Select Direction -</option>
+              <option value="top">Top</option>
+              <option value="right">Right</option>
+              <option value="center">Center</option>
+              <option value="bottom">Bottom</option>
+              <option value="left">Left</option>
+            </select>
+          </div>
+      </div>
+    </div>
+
+    <script type="text/javascript">
+		/*
+		 * Takes a 3 or 6-digit hex color code, and an optional 0-255 numeric alpha value
+		 */
+		function hexToRGB(hex, alpha) {
+		  if (typeof hex !== 'string' || hex[0] !== '#') {
+			console.log ("Not a hex color:");
+			console.log(hex);
+			
+			return null; // or return 'transparent'
+			}
+		  const stringValues = (hex.length === 4)
+				? [hex.slice(1, 2), hex.slice(2, 3), hex.slice(3, 4)].map(n => `${n}${n}`)
+				: [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)];
+		  const intValues = stringValues.map(n => parseInt(n, 16));
+		  return {r:intValues[0],g:intValues[1],b:intValues[2]};
+		}
+		
+		function gradientStateToJSON(gradientvar){
+			var safetext = gradientvar.getSafeValue().split('%');
+			var handlearray = [];
+			for (var i = 0; i< safetext.length -1; i++){
+				var rgbp = safetext[i].slice(safetext[i].lastIndexOf('(')+1).replace(')',',').split(',');
+				rgbp = rgbp.map(parseFloat);
+				handlearray.push({pos:rgbp[3], r:rgbp[0],g:rgbp[1],b:rgbp[2]});
+			}
+			//console.log(JSON.stringify(handlearray)); //[{"pos":0,"r":0,"g":0,"b":0},{"pos":28.6667,"r":255,"g":255,"b":0},{"pos":44.3333,"r":255,"g":0,"b":0},{"pos":100,"r":255,"g":255,"b":255}]
+			return handlearray;
+		}
+	
+	  var gradients = {active:1,grad1 : "None",grad2 : "None",grad3 : "None",grad4 : "None"};
+	  
+	  function sendGradientsJSON(jsonstr){
+		gradientStateToJSON(gp1);
+		gradients.grad1 = gp1.getSafeValue(); //linear-gradient(to right, rgb(0, 0, 0) 0%, rgb(133, 0, 0) 22%, rgb(255, 0, 0) 50%, rgb(255, 255, 0) 80%, rgb(255, 255, 255) 100%)
+		var h = []
+		for (var handle in gp1.getHandlers()){ //FUCKED todo
+			var hand1 = gp1.getHandler(handle);
+			gradients.grad1= {pos:hand1.getPosition(),c: hexToRGB(hand1.getColor())};
+			h.push({pos:hand1.getPosition(),c: hexToRGB(hand1.getColor())});
+			console.log(hand1.getColor());
+			var color = hexToRGB(hand1.getColor());
+			console.log(color);
+			console.log(hand1.getColor().r);
+			console.log(gradients);
+			
+		}
+		gradients.grad1 = h;
+		var jsonobj = JSON.stringify(gradients);
+		const Http = new XMLHttpRequest();
+		const url='/setGradients?setGradient='+jsonobj;
+		console.log("GETTING URL:"+url);
+		return;
+		Http.open("GET", url );
+		Http.send();
+		Http.onreadystatechange=(e)=>{console.log(Http.responseText)};
+	  }
+	  
+      var gp1 = new Grapick({
+        el: '#grapick1',
+        direction: 'to right',
+        min: 0,
+        max: 100,
+		height: '40px',
+      });
+      gp1.addHandler(0, '#000000', 0);
+      gp1.addHandler(50, '#FF0000', 0);
+      gp1.addHandler(80, '#FFFF00', 0);
+      gp1.addHandler(100, '#FFFFFF', 0);
+      gp1.on('change', function(complete) {
+        document.body.style.backgroundImage = gp1.getSafeValue();
+		
+		console.log("changed");
+		console.log(gp1.getSafeValue());
+		if (complete){
+		console.log("complete");
+		//console.log(jsonobj); 
+		sendGradientsJSON("noneyet");
+	
+
+		}
+      })
+      gp1.on('select', function(complete) {
+        document.body.style.backgroundImage = gp1.getSafeValue();
+		
+		console.log("changed");
+		console.log(gp1.getSafeValue());
+      })
+      gp1.emit('change');
+
+      var swType1 = document.getElementById('switch-type');
+      var swAngle1 = document.getElementById('switch-angle');
+
+      swType1.addEventListener('change', function(e) {
+        gp1.setType(this.value);
+      })
+
+      swAngle1.addEventListener('change', function(e) {
+        gp1.setDirection(this.value);
+      })
+    
+    </script>
+  </body>
+</html>
