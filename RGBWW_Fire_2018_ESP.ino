@@ -13,6 +13,9 @@
 #include <ESP8266mDNS.h>
 #include <ArduinoJson.h>
 
+// With debug on, uses: Global variables use 46,068 bytes (56%) of dynamic memory, leaving 35,852 bytes for local variables. Maximum is 81,920 bytes
+// with debug off,uses: Global variables use 42,484 bytes (51%) of dynamic memory, leaving 39,436 bytes for local variables. Maximum is 81,920 bytes.
+// 1.8.9 2.5.0          Global variables use 33572 bytes (40%) of dynamic memory, leaving 48348 bytes for local variables. Maximum is 81920 bytes.
 #define DBG_OUTPUT_PORT Serial
 
 const char* ssid = "BRFK-NNyI";
@@ -21,9 +24,9 @@ const char* host = "torch1";
 
 const char* softapssid = "Torch1";
 
-IPAddress local_IP(192,168,4,1);
-IPAddress gateway(192,168,4,1);
-IPAddress subnet(255,255,255,0);
+IPAddress local_IP(192, 168, 4, 1);
+IPAddress gateway(192, 168, 4, 1);
+IPAddress subnet(255, 255, 255, 0);
 
 
 ESP8266WebServer server(80);
@@ -38,7 +41,7 @@ File fsUploadFile;
 //Access point mode for standalone ops
 //Wifi mode for local connection
 //
-const int capacity = 4096;
+const int capacity = 3096;
 StaticJsonDocument<capacity> doc;
 String jsongradient = "";
 uint32_t calibratewhiteness(uint32_t inrgb);
@@ -262,54 +265,55 @@ uint8_t heat[64];
 // the color palette
 CRGBPalette16 Pal;
 
+//------------------------------------------HANDLE GET REQUESTS-----------------------------------
 PalettePoint WebGradient[16]; //60 bytes
-void handlesetGradients(){
+void handlesetGradients() {
   jsongradient = server.arg("setGradient");
-  Serial.printf("Setgradients recived at %ld: ",millis());
+  Serial.printf("Setgradients recived at %ld: ", millis());
   Serial.println(jsongradient);
-  DeserializationError err = deserializeJson(doc,jsongradient);
-  if (err){
-	Serial.print(F("deserializeJson() failed with code "));
-	Serial.println(err.c_str());
-	return;
+  DeserializationError err = deserializeJson(doc, jsongradient);
+  if (err) {
+    Serial.print(F("deserializeJson() failed with code "));
+    Serial.println(err.c_str());
+    return;
   }
-  
+  server.send(200, "text/plain", "");
   int active = doc["active"];
   char objectname[20];
   //strcpy(objectname,"grad");
   //strcat(objectname, itoa(active));
-  sprintf(objectname,"grad%d",active);
-  for (int handle = 0; handle < doc[objectname].size();handle++){
-	//WebGradient[handle].pos = doc[objectname][handle]["pos"];
-	uint8_t r = doc[objectname][handle]["r"]; 
-	uint8_t g = doc[objectname][handle]["g"]; 
-	uint8_t b = doc[objectname][handle]["b"]; 
-	int   pos = doc[objectname][handle]["pos"];
-	pos = (pos*256)/100;
-	uint8_t w = 0;
-	Serial.printf("Gradiend %s handle %d R%d G%d B%d W%d pos%d\n",objectname,handle,r,g,b,w,pos);
-	
-	uint32_t calibcolor = calibratewhiteness(strip.Color(r,g,b,w));
-	WebGradient[handle].wrgb =  calibcolor;
-	//WebGradient[handle].wrgb =  strip.Color(r,g,b,w);
-	WebGradient[handle].pos = pos;
+  sprintf(objectname, "grad%d", active);
+  for (int handle = 0; handle < doc[objectname].size(); handle++) {
+    //WebGradient[handle].pos = doc[objectname][handle]["pos"];
+    uint8_t r = doc[objectname][handle]["r"];
+    uint8_t g = doc[objectname][handle]["g"];
+    uint8_t b = doc[objectname][handle]["b"];
+    int   pos = doc[objectname][handle]["pos"];
+    pos = (pos * 256) / 100;
+    uint8_t w = 0;
+    Serial.printf("Gradiend %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
+
+    uint32_t calibcolor = calibratewhiteness(strip.Color(r, g, b, w));
+    WebGradient[handle].wrgb =  calibcolor;
+    //WebGradient[handle].wrgb =  strip.Color(r,g,b,w);
+    WebGradient[handle].pos = pos;
   }
-  sprintf(objectname,"grad%dspeed",active); 
+  sprintf(objectname, "grad%dspeed", active);
   int gradspeed = doc[objectname]; //[-13;+12]
-  delaytime = 20 - gradspeed ; 
+  delaytime = 20 - gradspeed ;
   //fixed time to update is 3.5ms
-  //delay goes from 11.5ms (85hz) to 35ms (30hz) 
-  
-  sprintf(objectname,"grad%dheat",active);
+  //delay goes from 11.5ms (85hz) to 35ms (30hz)
+
+  sprintf(objectname, "grad%dheat", active);
   int gradheat = doc[objectname];////[-13;+12]
-  heatness = min(255, 207 + 4* gradheat);
+  heatness = min(255, 207 + 4 * gradheat);
   //heatness sensibly should go from 255 to 150
-  
-  
-  server.send(200, "text/plain", "");
+
+
+
   //TODO PARSE JSON
   last_web_update = millis();
-  }
+}
 
 // check the Serial Monitor for fps rate
 void show_fps() {
@@ -372,7 +376,7 @@ uint32_t calibratewhiteness(uint32_t inrgb) { // example in color is (128,200,50
   nc.g = (in.g - ((maxw * ww64.g) / ww64.w));
   nc.b = (in.b - ((maxw * ww64.b) / ww64.w));
 
-
+#if DBG
   Serial.print("Calibrating color ");
   printColorWRGB(in.wrgb);
   Serial.print("Using warmwhite64 ");
@@ -381,7 +385,7 @@ uint32_t calibratewhiteness(uint32_t inrgb) { // example in color is (128,200,50
   Serial.println(maxw);
   Serial.print("Result=           ");
   printColorWRGB(nc.wrgb);
-
+#endif
   return nc.wrgb;
 }
 
@@ -408,22 +412,22 @@ void setup() {
   DBG_OUTPUT_PORT.begin(115200);
   DBG_OUTPUT_PORT.print("\n");
   DBG_OUTPUT_PORT.setDebugOutput(true);
-  jsongradient.reserve(3072);
+  jsongradient.reserve(1024);
 
   Serial.begin(115200);
-  #if DBG
+#if DBG
   for (int level = 0; level < 256; level++) {
     //Serial.print(level);
     //Serial.print("level gives color: ");
     //printColorWRGB(getFromPalette(WarmTorch4p, 4, level));
   }
-  #endif
+#endif
   strip.begin();
   strip.setBrightness(BRIGHTNESS);
   //testcolors();
   calibratewhiteness(strip.Color(128, 200, 50));
 
-    SPIFFS.begin();
+  SPIFFS.begin();
   {
     Dir dir = SPIFFS.openDir("/");
     while (dir.next()) {
@@ -436,7 +440,22 @@ void setup() {
 
   //SoftAP init:
 
-  
+
+  //WIFI INIT
+  DBG_OUTPUT_PORT.printf("Connecting to %s\n", ssid);
+  if (String(WiFi.SSID()) != String(ssid)) {
+    WiFi.mode(WIFI_AP);
+    //WiFi.begin(ssid, password);
+  }
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    DBG_OUTPUT_PORT.print(".");
+    attempts++;
+    if (attempts > 10) break;
+  }
+
   Serial.print("Setting soft-AP configuration ... ");
   Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Ready" : "Failed!");
 
@@ -446,20 +465,7 @@ void setup() {
   Serial.print("Soft-AP IP address = ");
   Serial.println(WiFi.softAPIP());
 
-  //WIFI INIT
-  DBG_OUTPUT_PORT.printf("Connecting to %s\n", ssid);
-  if (String(WiFi.SSID()) != String(ssid)) {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-  }
-
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    DBG_OUTPUT_PORT.print(".");
-    attempts++;
-    if (attempts > 20) break;
-  }
+  WiFi.setAutoReconnect(false);
   DBG_OUTPUT_PORT.println("");
   DBG_OUTPUT_PORT.print("Connected! IP address: ");
   DBG_OUTPUT_PORT.println(WiFi.localIP());
@@ -497,7 +503,7 @@ void setup() {
     }
   });
 
-  server.on("/setGradients",handlesetGradients);
+  server.on("/setGradients", handlesetGradients);
 
   //get heap status, analog input value and all GPIO statuses in one json call
   server.on("/all", HTTP_GET, []() {
@@ -511,9 +517,9 @@ void setup() {
   });
   server.begin();
   DBG_OUTPUT_PORT.println("HTTP server started");
-  for (uint8_t i = 0; i < 4;i++){
-	  WebGradient[i].wrgb = WarmTorch4p[i].wrgb;
-	  WebGradient[i].wrgb = WarmTorch4p[i].pos;
+  for (uint8_t i = 0; i < 4; i++) {
+    WebGradient[i].wrgb = WarmTorch4p[i].wrgb;
+    WebGradient[i].wrgb = WarmTorch4p[i].pos;
   }
 }
 
@@ -523,7 +529,7 @@ void loop() {
   server.handleClient();
   //show_fps();
 }
-
+//--------------------------------------------DRAW FIRE---------------------------------------------------
 // here we go
 void Fire2018() {
   uint32_t starttime = micros();
@@ -566,7 +572,7 @@ void Fire2018() {
       noise[i][j] = data >> 8;
     }
   }
-yield();
+  yield();
 
   // Draw the first (lowest) line - seed the fire.
   // It could be random pixels or anything else as well.
@@ -584,7 +590,7 @@ yield();
       heat[XY(x, y)] = heat[XY(x, y + 1)];
     }
   }
-yield();
+  yield();
   // Scale the heatmap values down based on the independent scrolling noise array.
   for (uint8_t y = 0; y < Height - 1; y++) {
     for (uint8_t x = 0; x < Width; x++) {
@@ -599,16 +605,16 @@ yield();
       // If the number is not right you loose the uplifting fire clouds
       // which seperate themself while rising up.
       //dim = dim / DIMFACTOR;
-      dim = scale8(dim,heatness);
+      dim = scale8(dim, heatness);
       dim = 255 - dim;
-	  
-	  //dim = 255 - (dim/decay)
+
+      //dim = 255 - (dim/decay)
 
       // here happens the scaling of the heatmap
       heat[XY(x, y)] = scale8(heat[XY(x, y)] , dim);
     }
   }
-yield();
+  yield();
   // Now just map the colors based on the heatmap.
   for (uint8_t y = 0; y < Height - 1; y++) {
     for (uint8_t x = 0; x < Width; x++) {
@@ -619,10 +625,10 @@ yield();
   }
   // Done. Bring it on!
   uint32_t showtime = micros(); //showtime should be 1.2us*32*NUM_LEDS = 2.3ms
-  
+
   //shift all the pixels forward, as we are missing 4 pixels out of 64 (only 60 pixels per meter of led strip!)
-  for (uint8_t i = 0; i < 60; i++){
-	strip.setPixelColor(i,strip.getPixelColor(i+4)); 
+  for (uint8_t i = 0; i < 60; i++) {
+    strip.setPixelColor(i, strip.getPixelColor(i + 4));
   }
   yield();
   strip.show();
@@ -638,7 +644,7 @@ yield();
       //Serial.print(heat[XY(x, y)]);
       uint32_t c = strip.getPixelColor(XY(x, y));
       uint8_t h = heat[XY(x, y)];
-      #if DBG
+#if DBG
       Serial.print("Heat=" );
       Serial.print(h);
       Serial.print(" x=");
@@ -647,7 +653,7 @@ yield();
       Serial.print(y);
       Serial.print(' ');
       printColorWRGB(c);
-      #endif
+#endif
       //Serial.println("");
 
       totalcurrent += c & 0xff;
@@ -659,35 +665,36 @@ yield();
     }
     //Serial.println("");
   }
-    EVERY_N_MILLIS(3000) {
-   
-  
-  totalcurrent = totalcurrent / 25;//each 255 brightness is 10mA
-  totalcurrent = (totalcurrent*255)/BRIGHTNESS; //scale with hard coded brightness
-  
-  //Serial.print("Average brightness = (max 255)");
-  Serial.print(totalcurrent);
-  Serial.print("mA dt_us=");
-  Serial.println(deltat);
-	}
+  EVERY_N_MILLIS(3000) {
+
+
+    totalcurrent = totalcurrent / 25;//each 255 brightness is 10mA
+    totalcurrent = (totalcurrent * BRIGHTNESS) / 255; //scale with hard coded brightness
+
+    //Serial.print("Average brightness = (max 255)");
+    Serial.print(totalcurrent);
+    Serial.print("mA dt_us=");
+    Serial.println(deltat);
+  }
 
 
   // If you change the framerate here you need to adjust the
   // y speed and the dim divisor, too.
   delay(delaytime);
   yield();
-  if ((last_web_update + web_update_timeout) <millis()){
-	  last_web_update = 0x7FFFFFFF; //so we dont keep saving shit
-	  char fn[40];
-	  sprintf(fn,"/saved_%09d.js",millis());
-	  File outf = SPIFFS.open(fn, "w");
-	  if (!outf){
-		  Serial.printf("Failed to open file %s\n",fn);
-		  return;
-	  }
-	  if(outf.print(jsongradient)) Serial.printf("File %s written sucessfully\n",fn);
-	  else Serial.printf("File %s write failed\n",fn);
-	  outf.close();
+  if ((last_web_update + web_update_timeout) < millis()) {
+    Serial.print("Updating files from web change: ");
+    Serial.println(millis());
+    last_web_update = 0x7FFFFFFF; //so we dont keep saving shit
+    char fn[40];
+    sprintf(fn, "/saved_%09d.js", millis());
+    File outf = SPIFFS.open(fn, "w");
+    if (!outf) {
+      Serial.printf("Failed to open file %s\n", fn);
+      return;
+    }
+    if (outf.print(jsongradient)) Serial.printf("File %s written sucessfully\n", fn);
+    else Serial.printf("File %s write failed\n", fn);
+    outf.close();
   }
 }
-
