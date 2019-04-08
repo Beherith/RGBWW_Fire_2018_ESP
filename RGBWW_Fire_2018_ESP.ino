@@ -16,6 +16,11 @@
 // With debug on, uses: Global variables use 46,068 bytes (56%) of dynamic memory, leaving 35,852 bytes for local variables. Maximum is 81,920 bytes
 // with debug off,uses: Global variables use 42,484 bytes (51%) of dynamic memory, leaving 39,436 bytes for local variables. Maximum is 81,920 bytes.
 // 1.8.9 2.5.0          Global variables use 33572 bytes (40%) of dynamic memory, leaving 48348 bytes for local variables. Maximum is 81920 bytes.
+// before progmem:      Global variables use 32528 bytes (39%) of dynamic memory, leaving 49392 bytes for local variables. Maximum is 81920 bytes.
+// single progmem:  Global variables use 32512 bytes (39%) of dynamic memory, leaving 49408 bytes for local variables. Maximum is 81920 bytes.
+// most progmem: Global variables use 32064 bytes (39%) of dynamic memory, leaving 49856 bytes for local variables. Maximum is 81920 bytes.
+
+
 #define DBG_OUTPUT_PORT Serial
 
 const char* ssid = "BRFK-NNyI";
@@ -27,6 +32,11 @@ const char* softapssid = "Torch1";
 IPAddress local_IP(192, 168, 4, 1);
 IPAddress gateway(192, 168, 4, 1);
 IPAddress subnet(255, 255, 255, 0);
+
+uint32_t reconnect_interval = 300000;
+uint32_t reconnect_last_connected = 0;
+uint32_t reconnect_until = 0;
+bool reconnect_state = false;
 
 
 ESP8266WebServer server(80);
@@ -42,12 +52,13 @@ File fsUploadFile;
 //Wifi mode for local connection
 //
 const int capacity = 3096;
-StaticJsonDocument<capacity> doc;
+//StaticJsonDocument<capacity> doc; //static is on stack, heap is max 4k so baaaad idea
+DynamicJsonDocument doc(4096); //on the heap, so hopefully better 
 String jsongradient = "";
 uint32_t calibratewhiteness(uint32_t inrgb);
 
 uint32_t last_web_update = 0x7FFFFFFF;
-uint32_t web_update_timeout = 300000;
+uint32_t web_update_timeout = 60000;
 
 //format bytes
 String formatBytes(size_t bytes) {
@@ -64,39 +75,39 @@ String formatBytes(size_t bytes) {
 
 String getContentType(String filename) {
   if (server.hasArg("download")) {
-    return "application/octet-stream";
+    return F("application/octet-stream");
   } else if (filename.endsWith(".htm")) {
-    return "text/html";
+    return F("text/html");
   } else if (filename.endsWith(".html")) {
-    return "text/html";
+    return F("text/html");
   } else if (filename.endsWith(".css")) {
-    return "text/css";
+    return F("text/css");
   } else if (filename.endsWith(".js")) {
-    return "application/javascript";
+    return F("application/javascript");
   } else if (filename.endsWith(".png")) {
-    return "image/png";
+    return F("image/png");
   } else if (filename.endsWith(".gif")) {
-    return "image/gif";
+    return F("image/gif");
   } else if (filename.endsWith(".jpg")) {
-    return "image/jpeg";
+    return F("image/jpeg");
   } else if (filename.endsWith(".ico")) {
-    return "image/x-icon";
+    return F("image/x-icon");
   } else if (filename.endsWith(".xml")) {
-    return "text/xml";
+    return F("text/xml");
   } else if (filename.endsWith(".pdf")) {
-    return "application/x-pdf";
+    return F("application/x-pdf");
   } else if (filename.endsWith(".zip")) {
-    return "application/x-zip";
+    return F("application/x-zip");
   } else if (filename.endsWith(".gz")) {
-    return "application/x-gzip";
+    return F("application/x-gzip");
   } else if (filename.endsWith(".json")) {
-    return "application/json";
+    return F("application/json");
   }
-  return "text/plain";
+  return F("text/plain");
 }
 
 bool handleFileRead(String path) {
-  DBG_OUTPUT_PORT.println("handleFileRead: " + path);
+  DBG_OUTPUT_PORT.print(F("handleFileRead: ")); DBG_OUTPUT_PORT.println(path);
   if (path.endsWith("/")) {
     path += "index.htm";
   }
@@ -111,6 +122,7 @@ bool handleFileRead(String path) {
     file.close();
     return true;
   }
+  Serial.println(F("File does not exist"));
   return false;
 }
 
@@ -124,7 +136,7 @@ void handleFileUpload() {
     if (!filename.startsWith("/")) {
       filename = "/" + filename;
     }
-    DBG_OUTPUT_PORT.print("handleFileUpload Name: "); DBG_OUTPUT_PORT.println(filename);
+    DBG_OUTPUT_PORT.print(F("handleFileUpload Name: ")); DBG_OUTPUT_PORT.println(filename);
     fsUploadFile = SPIFFS.open(filename, "w");
     filename = String();
   } else if (upload.status == UPLOAD_FILE_WRITE) {
@@ -136,7 +148,7 @@ void handleFileUpload() {
     if (fsUploadFile) {
       fsUploadFile.close();
     }
-    DBG_OUTPUT_PORT.print("handleFileUpload Size: "); DBG_OUTPUT_PORT.println(upload.totalSize);
+    DBG_OUTPUT_PORT.print(F("handleFileUpload Size: ")); DBG_OUTPUT_PORT.println(upload.totalSize);
   }
 }
 
@@ -145,48 +157,48 @@ void handleFileDelete() {
     return server.send(500, "text/plain", "BAD ARGS");
   }
   String path = server.arg(0);
-  DBG_OUTPUT_PORT.println("handleFileDelete: " + path);
+  DBG_OUTPUT_PORT.print(F("handleFileDelete: ")); DBG_OUTPUT_PORT.println(path);
   if (path == "/") {
-    return server.send(500, "text/plain", "BAD PATH");
+    return server.send(500, F("text/plain"), "BAD PATH");
   }
   if (!SPIFFS.exists(path)) {
-    return server.send(404, "text/plain", "FileNotFound");
+    return server.send(404, F("text/plain"), "FileNotFound");
   }
   SPIFFS.remove(path);
-  server.send(200, "text/plain", "");
+  server.send(200, F("text/plain"), "");
   path = String();
 }
 
 void handleFileCreate() {
   if (server.args() == 0) {
-    return server.send(500, "text/plain", "BAD ARGS");
+    return server.send(500, F("text/plain"), "BAD ARGS");
   }
   String path = server.arg(0);
-  DBG_OUTPUT_PORT.println("handleFileCreate: " + path);
+  DBG_OUTPUT_PORT.print(F("handleFileCreate: ")); DBG_OUTPUT_PORT.println(path);
   if (path == "/") {
-    return server.send(500, "text/plain", "BAD PATH");
+    return server.send(500, F("text/plain"), "BAD PATH");
   }
   if (SPIFFS.exists(path)) {
-    return server.send(500, "text/plain", "FILE EXISTS");
+    return server.send(500, F("text/plain"), "FILE EXISTS");
   }
   File file = SPIFFS.open(path, "w");
   if (file) {
     file.close();
   } else {
-    return server.send(500, "text/plain", "CREATE FAILED");
+    return server.send(500, F("text/plain"), F("CREATE FAILED"));
   }
-  server.send(200, "text/plain", "");
+  server.send(200, F("text/plain"), "");
   path = String();
 }
 
 void handleFileList() {
   if (!server.hasArg("dir")) {
-    server.send(500, "text/plain", "BAD ARGS");
+    server.send(500, F("text/plain"), "BAD ARGS");
     return;
   }
 
   String path = server.arg("dir");
-  DBG_OUTPUT_PORT.println("handleFileList: " + path);
+  DBG_OUTPUT_PORT.print(F("handleFileList: ")); DBG_OUTPUT_PORT.println( path);
   Dir dir = SPIFFS.openDir(path);
   path = String();
 
@@ -206,7 +218,7 @@ void handleFileList() {
   }
 
   output += "]";
-  server.send(200, "text/json", output);
+  server.send(200, F("text/json"), output);
 }
 
 
@@ -266,18 +278,20 @@ uint8_t heat[64];
 CRGBPalette16 Pal;
 
 //------------------------------------------HANDLE GET REQUESTS-----------------------------------
-PalettePoint WebGradient[16]; //60 bytes
+PalettePoint WebGradient[16]; //80 bytes
 void handlesetGradients() {
   jsongradient = server.arg("setGradient");
-  Serial.printf("Setgradients recived at %ld: ", millis());
-  Serial.println(jsongradient);
+  Serial.printf("Setgradients received at %ld: ", millis());
+  server.send(200, "text/plain", "");
+  #if DBG
+	Serial.println(jsongradient);
+  #endif
   DeserializationError err = deserializeJson(doc, jsongradient);
   if (err) {
     Serial.print(F("deserializeJson() failed with code "));
     Serial.println(err.c_str());
     return;
   }
-  server.send(200, "text/plain", "");
   int active = doc["active"];
   char objectname[20];
   //strcpy(objectname,"grad");
@@ -291,7 +305,9 @@ void handlesetGradients() {
     int   pos = doc[objectname][handle]["pos"];
     pos = (pos * 256) / 100;
     uint8_t w = 0;
-    Serial.printf("Gradiend %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
+    #if DBG
+		Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
+	#endif
 
     uint32_t calibcolor = calibratewhiteness(strip.Color(r, g, b, w));
     WebGradient[handle].wrgb =  calibcolor;
@@ -377,13 +393,13 @@ uint32_t calibratewhiteness(uint32_t inrgb) { // example in color is (128,200,50
   nc.b = (in.b - ((maxw * ww64.b) / ww64.w));
 
 #if DBG
-  Serial.print("Calibrating color ");
+  Serial.print(F("Calibrating color "));
   printColorWRGB(in.wrgb);
-  Serial.print("Using warmwhite64 ");
+  Serial.print(F("Using warmwhite64 "));
   printColorWRGB(ww64.wrgb);
-  Serial.print ("maxw= ");
+  Serial.print (F("maxw= "));
   Serial.println(maxw);
-  Serial.print("Result=           ");
+  Serial.print(F("Result=           "));
   printColorWRGB(nc.wrgb);
 #endif
   return nc.wrgb;
@@ -456,24 +472,24 @@ void setup() {
     if (attempts > 10) break;
   }
 
-  Serial.print("Setting soft-AP configuration ... ");
+  Serial.print(F("Setting soft-AP configuration ... "));
   Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Ready" : "Failed!");
 
-  Serial.print("Setting soft-AP ... ");
+  Serial.print(F("Setting soft-AP ... "));
   Serial.println(WiFi.softAP(softapssid) ? "Ready" : "Failed!");
 
-  Serial.print("Soft-AP IP address = ");
+  Serial.print(F("Soft-AP IP address = "));
   Serial.println(WiFi.softAPIP());
 
   WiFi.setAutoReconnect(false);
   DBG_OUTPUT_PORT.println("");
-  DBG_OUTPUT_PORT.print("Connected! IP address: ");
+  DBG_OUTPUT_PORT.print(F("Connected! IP address: "));
   DBG_OUTPUT_PORT.println(WiFi.localIP());
 
-  MDNS.begin(host);
-  DBG_OUTPUT_PORT.print("Open http://");
+  //MDNS.begin(host);
+  DBG_OUTPUT_PORT.print(F("Open http://"));
   DBG_OUTPUT_PORT.print(host);
-  DBG_OUTPUT_PORT.println(".local/edit to see the file browser");
+  DBG_OUTPUT_PORT.println(F(".local/edit to see the file browser"));
 
 
   //SERVER INIT
@@ -482,7 +498,7 @@ void setup() {
   //load editor
   server.on("/edit", HTTP_GET, []() {
     if (!handleFileRead("/edit.htm")) {
-      server.send(404, "text/plain", "FileNotFound");
+      server.send(404, F("text/plain"), "FileNotFound");
     }
   });
   //create file
@@ -528,6 +544,29 @@ void loop() {
   Fire2018();
   server.handleClient();
   //show_fps();
+
+  EVERY_N_MILLIS(5000){
+	if (WiFi.status() == WL_CONNECTED){
+		reconnect_last_connected = millis();
+	}else{
+		if (reconnect_last_connected + reconnect_interval < millis()){
+			Serial.printf("Disconnected at %ds, enabling autoreconnect\n",millis()/1000);
+			reconnect_last_connected = millis();
+			reconnect_until = millis() + 10000;
+			WiFi.setAutoReconnect(true);
+			reconnect_state = true;
+		}
+		if ((reconnect_until < millis()) && reconnect_state){
+			Serial.printf("%ds Disabling autoreconnect\n",millis()/1000);
+			WiFi.setAutoReconnect(false);
+			reconnect_state = false;
+		}
+      }
+    }
+	EVERY_N_MILLIS(1000){
+		Serial.printf("ESP.getFreeHeap()=%d  ESP.getHeapFragmentation()=%d ESP.getMaxFreeBlockSize()=%d\n",ESP.getFreeHeap(),ESP.getHeapFragmentation(),ESP.getMaxFreeBlockSize());
+		savesettings();
+	}
 }
 //--------------------------------------------DRAW FIRE---------------------------------------------------
 // here we go
@@ -682,19 +721,52 @@ void Fire2018() {
   // y speed and the dim divisor, too.
   delay(delaytime);
   yield();
-  if ((last_web_update + web_update_timeout) < millis()) {
-    Serial.print("Updating files from web change: ");
-    Serial.println(millis());
-    last_web_update = 0x7FFFFFFF; //so we dont keep saving shit
-    char fn[40];
-    sprintf(fn, "/saved_%09d.js", millis());
-    File outf = SPIFFS.open(fn, "w");
-    if (!outf) {
-      Serial.printf("Failed to open file %s\n", fn);
-      return;
-    }
-    if (outf.print(jsongradient)) Serial.printf("File %s written sucessfully\n", fn);
-    else Serial.printf("File %s write failed\n", fn);
-    outf.close();
+
+  Serial.printf("Free=%d  Frag=%d\n",ESP.getFreeHeap(),ESP.getHeapFragmentation());
+  if (ESP.getFreeHeap()<16000){
+	  dumpRAM();
   }
 }
+
+void savesettings(){
+	if ((last_web_update + web_update_timeout) < millis()) {
+		Serial.print(F("Updating files from web change: "));
+		Serial.println(millis());
+		last_web_update = 0x7FFFFFFF; //so we dont keep saving shit
+		char fn[40];
+		sprintf(fn, "/saved_%09d.js", millis());
+		File outf = SPIFFS.open(fn, "w");
+		if (!outf) {
+			Serial.printf("Failed to open file %s\n", fn);
+			return;
+		}
+		if (outf.print(jsongradient)) Serial.printf("File %s written sucessfully\n", fn);
+		else Serial.printf("File %s write failed\n", fn);
+		outf.close();
+	}
+}
+void dumpRAM(){
+	//https://github.com/esp8266/esp8266-wiki/wiki/Memory-Map
+	//3FFE8000h 	dram0 	14000h 	RAM 	RW 	User data RAM. Available to applications.
+	//Start from bottom up?
+	#define RAMSTART 0x3FFE8000
+	#define RAMSIZE 0x14000
+	//uint32_t * ram_ptr = RAMSTART;
+	
+	for (uint32_t i = RAMSTART + (RAMSIZE/2); i< (RAMSTART+RAMSIZE); i=i+16){
+		Serial.print(i,HEX);
+		Serial.print(": ");
+		for (uint32_t j = 0; j < 4;j++){
+			uint32_t nowptr = RAMSTART+i+4*j;
+			Serial.print((*(RwReg*)(nowptr)),HEX);
+//			Serial.print(*(nowptr),HEX);
+			Serial.print(" ");
+		}
+		Serial.println("");
+	}
+	
+}
+	
+	
+
+	
