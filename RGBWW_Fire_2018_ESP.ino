@@ -1,16 +1,14 @@
-/*
-  https://gist.github.com/StefanPetrick/1ba4584e534ba99ca259c1103754e4c5
-  FromFastLED Fire 2018 by Stefan Petrick
-  https://www.youtube.com/watch?v=SWMu-a9pbyk
 
-*/
 
+#define DBG_OUTPUT_PORT Serial
+#define DEBUG_ESP_WIFI 
+#define DEBUG_ESP_PORT 
 //---------------------------------------ESP WEBSERVER STUFF---------------------------
 #include <ESP8266WiFi.h>
 #include <FS.h>   //Include File System Headers
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
+//#include <ESP8266mDNS.h> //remove for now, since it doesnt even work
 #include <ArduinoJson.h>
 
 // With debug on, uses: Global variables use 46,068 bytes (56%) of dynamic memory, leaving 35,852 bytes for local variables. Maximum is 81,920 bytes
@@ -21,7 +19,13 @@
 // most progmem: Global variables use 32064 bytes (39%) of dynamic memory, leaving 49856 bytes for local variables. Maximum is 81920 bytes.
 
 
-#define DBG_OUTPUT_PORT Serial
+//Crashes are caused by Neopixel's strip.show()! 
+// use https://github.com/Makuna/NeoPixelBus/wiki/ESP8266-NeoMethods instead
+//use NeoEsp8266Uart1800KbpsMethod for uart1 on pin GPIO2/Wemos D4 ? This has some cpu overhead
+//use NeoEsp8266Dma800KbpsMethod   for gpio3 (RXD Wemos), so no more serial recv
+
+ 
+
 
 const char* ssid = "BRFK-NNyI";
 const char* password = "ingyenwifi";
@@ -37,6 +41,7 @@ uint32_t reconnect_interval = 300000;
 uint32_t reconnect_last_connected = 0;
 uint32_t reconnect_until = 0;
 bool reconnect_state = false;
+uint32_t prev_free_ram = 0;
 
 
 ESP8266WebServer server(80);
@@ -241,7 +246,8 @@ void handleFileList() {
 
 #include "RGBWWPalette.h"
 #include "FastLED.h"
-#include <Adafruit_NeoPixel.h>
+#include <NeoPixelBus.h>
+//#include <Adafruit_NeoPixel.h>
 const uint8_t Width  = 8;
 const uint8_t Height = 8;
 const uint8_t CentreX =  (Width / 2) - 1;
@@ -254,11 +260,35 @@ const uint8_t CentreY = (Height / 2) - 1;
 #define DIMFACTOR 1.4 // height/6 is good
 int delaytime = 20;
 int heatness = 178;
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, PIN, NEO_GRBW + NEO_KHZ800);
-
+//Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, PIN, NEO_GRBW + NEO_KHZ800);
+NeoPixelBus<NeoGrbwFeature,NeoEsp8266Dma800KbpsMethod> strip(64);
 uint32_t deltat = 0;
 //CRGB leds[NUM_LEDS];
 
+RgbwColor supertest(0,0,0,0);
+
+//RgbwColor((color >> 16) & 0xff,(color >> 8) & 0xff,(color >> 0) & 0xff,(color >> 24) & 0xff);
+/*
+RgbwColor * fromBGRW(uint32_t incolor){
+	uint8_t b = incolor & 0xff;
+	uint8_t g = (incolor >>8) & 0xff;
+	uint8_t r = (incolor >>16) & 0xff;
+	uint8_t w = (incolor >>24) & 0xff;
+	return RgbwColor(r,g,b,w);
+}*/
+/*
+uint32_t toBGRW(const RgbwColor& incolor){
+	uint32_t result = 0;
+	result = (incolor.W);
+	result = (result << 8) + incolor.R;
+	result = (result << 8) + incolor.G;
+	result = (result << 8) + incolor.B;
+	return result;
+}*/
+
+uint32_t uint32color(uint32_t r, uint32_t g, uint32_t b, uint32_t w){
+	return ( ((r&0xff)<<16 ) + ((g&0xff)<<8 ) + ((b&0xff)<<0 ) + ((w&0xff)<<24 ) );
+}
 
 // control parameters for the noise array
 uint32_t x;
@@ -286,6 +316,7 @@ void handlesetGradients() {
   #if DBG
 	Serial.println(jsongradient);
   #endif
+  return;
   DeserializationError err = deserializeJson(doc, jsongradient);
   if (err) {
     Serial.print(F("deserializeJson() failed with code "));
@@ -309,7 +340,7 @@ void handlesetGradients() {
 		Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
 	#endif
 
-    uint32_t calibcolor = calibratewhiteness(strip.Color(r, g, b, w));
+    uint32_t calibcolor = calibratewhiteness(uint32color(r, g, b, w));
     WebGradient[handle].wrgb =  calibcolor;
     //WebGradient[handle].wrgb =  strip.Color(r,g,b,w);
     WebGradient[handle].pos = pos;
@@ -338,9 +369,7 @@ void show_fps() {
   }
 }
 
-// this finds the right index within a serpentine matrix
-
-inline uint16_t XY( uint8_t x, uint8_t y) __attribute__((always_inline)); //this forces true inlineness
+// this finds the right index within a serpentine matrixuint8_t x, uint8_t y) __attribute__((always_inline)); //this forces true inlineness
 inline uint16_t XY( uint8_t x, uint8_t y) {
   uint16_t i;
   if ( y & 0x01) {
@@ -382,7 +411,7 @@ PalettePoint WarmTorchFlash7p[7] = { //0 is black, 255 is full white
 uint32_t calibratewhiteness(uint32_t inrgb) { // example in color is (128,200,50,0)
   // R152 G79 B21 MATCHES W64!!!!!!!
   ColorBGRW in = {inrgb};
-  ColorBGRW ww64 = {strip.Color(152, 79, 21, 64)};
+  ColorBGRW ww64 = {uint32color(152, 79, 21, 64)};
   ColorBGRW nc = {0};
 
   //find max divisor
@@ -407,20 +436,21 @@ uint32_t calibratewhiteness(uint32_t inrgb) { // example in color is (128,200,50
 
 void holdcolor(uint32_t color, int holdtime) {
   for (int i = 0; i < NUM_LEDS; i++) {
-    strip.setPixelColor(i, color);
+	
+    strip.SetPixelColor(i, RgbwColor((color >> 16) & 0xff,(color >> 8) & 0xff,(color >> 0) & 0xff,(color >> 24) & 0xff));
   }
-  strip.show();
+  strip.Show();
   delay(holdtime);
 }
 void testcolors() {
-  holdcolor(strip.Color(0, 0, 0, 0), 3000 );
-  holdcolor(strip.Color(255, 0, 0, 0), 3000 );
-  holdcolor(strip.Color(0, 255, 0, 0), 3000 );
-  holdcolor(strip.Color(0, 0, 255, 0), 3000 );
-  holdcolor(strip.Color(0, 0, 0, 255), 3000 );
-  holdcolor(strip.Color(255, 255, 255, 0), 3000 );
-  holdcolor(strip.Color(255, 255, 255, 255), 3000 );
-  holdcolor(strip.Color(128, 128, 128, 128), 3000 );
+  holdcolor(uint32color(0, 0, 0, 0), 3000 );
+  holdcolor(uint32color(255, 0, 0, 0), 3000 );
+  holdcolor(uint32color(0, 255, 0, 0), 3000 );
+  holdcolor(uint32color(0, 0, 255, 0), 3000 );
+  holdcolor(uint32color(0, 0, 0, 255), 3000 );
+  holdcolor(uint32color(255, 255, 255, 0), 3000 );
+  holdcolor(uint32color(255, 255, 255, 255), 3000 );
+  holdcolor(uint32color(128, 128, 128, 128), 3000 );
 }
 
 //-------------------------------------------------SETUP-------------------------------------------------
@@ -430,7 +460,7 @@ void setup() {
   DBG_OUTPUT_PORT.setDebugOutput(true);
   jsongradient.reserve(1024);
 
-  Serial.begin(115200);
+  Serial.begin(115200); //serial.begin before strip.begin!
 #if DBG
   for (int level = 0; level < 256; level++) {
     //Serial.print(level);
@@ -438,10 +468,10 @@ void setup() {
     //printColorWRGB(getFromPalette(WarmTorch4p, 4, level));
   }
 #endif
-  strip.begin();
-  strip.setBrightness(BRIGHTNESS);
+  strip.Begin();  //serial.begin before strip.begin!
+  //strip.setBrightness(BRIGHTNESS);
   //testcolors();
-  calibratewhiteness(strip.Color(128, 200, 50));
+  calibratewhiteness(0);
 
   SPIFFS.begin();
   {
@@ -563,13 +593,20 @@ void loop() {
 		}
       }
     }
-	EVERY_N_MILLIS(1000){
+	EVERY_N_MILLIS(4000){
 		Serial.printf("ESP.getFreeHeap()=%d  ESP.getHeapFragmentation()=%d ESP.getMaxFreeBlockSize()=%d\n",ESP.getFreeHeap(),ESP.getHeapFragmentation(),ESP.getMaxFreeBlockSize());
 		savesettings();
 	}
 }
 //--------------------------------------------DRAW FIRE---------------------------------------------------
 // here we go
+/*
+  https://gist.github.com/StefanPetrick/1ba4584e534ba99ca259c1103754e4c5
+  FromFastLED Fire 2018 by Stefan Petrick
+  https://www.youtube.com/watch?v=SWMu-a9pbyk
+
+*/
+
 void Fire2018() {
   uint32_t starttime = micros();
   // get one noise value out of a moving noise space
@@ -618,7 +655,8 @@ void Fire2018() {
   for (uint8_t x = 0; x < Width; x++) {
     // draw
     //leds[XY(x, Height-1)] = ColorFromPalette( Pal, noise[x][0]);
-    strip.setPixelColor(XY(x, Height - 1), getFromPalette(WebGradient, 16, noise[x][0]));
+	uint32_t color = getFromPalette(WebGradient, 16, noise[x][0]);
+    strip.SetPixelColor(XY(x, Height - 1), RgbwColor((color >> 16) & 0xff,(color >> 8) & 0xff,(color >> 0) & 0xff,(color >> 24) & 0xff));
     // and fill the lowest line of the heatmap, too
     heat[XY(x, Height - 1)] = noise[x][0];
   }
@@ -658,8 +696,8 @@ void Fire2018() {
   for (uint8_t y = 0; y < Height - 1; y++) {
     for (uint8_t x = 0; x < Width; x++) {
       //leds[XY(x, y)] = ColorFromPalette( Pal, heat[XY(x, y)]);
-
-      strip.setPixelColor(XY(x, y), getFromPalette(WebGradient, 16, heat[XY(x, y)]));
+      uint32_t color = getFromPalette(WebGradient, 16, heat[XY(x, y)]);
+      strip.SetPixelColor(XY(x, y), RgbwColor((color >> 16) & 0xff,(color >> 8) & 0xff,(color >> 0) & 0xff,(color >> 24) & 0xff));
     }
   }
   // Done. Bring it on!
@@ -667,10 +705,10 @@ void Fire2018() {
 
   //shift all the pixels forward, as we are missing 4 pixels out of 64 (only 60 pixels per meter of led strip!)
   for (uint8_t i = 0; i < 60; i++) {
-    strip.setPixelColor(i, strip.getPixelColor(i + 4));
+    strip.SetPixelColor(i, strip.GetPixelColor(i + 4));
   }
   yield();
-  strip.show();
+  strip.Show();
 
   deltat = micros() - starttime; //takes about 10ms to update :/
   yield();
@@ -681,7 +719,8 @@ void Fire2018() {
   for (uint8_t y = 0; y < Height ; y++) {
     for (uint8_t x = 0; x < Width; x++) {
       //Serial.print(heat[XY(x, y)]);
-      uint32_t c = strip.getPixelColor(XY(x, y));
+	  RgbwColor rgbwc = strip.GetPixelColor(XY(x, y));
+      uint32_t c = uint32color(rgbwc.R,rgbwc.G,rgbwc.B,rgbwc.W);
       uint8_t h = heat[XY(x, y)];
 #if DBG
       Serial.print("Heat=" );
@@ -721,10 +760,18 @@ void Fire2018() {
   // y speed and the dim divisor, too.
   delay(delaytime);
   yield();
-
-  Serial.printf("Free=%d  Frag=%d\n",ESP.getFreeHeap(),ESP.getHeapFragmentation());
+  if (ESP.getFreeHeap() != prev_free_ram){
+	  
+	Serial.printf("Free=%d  Frag=%d\n",ESP.getFreeHeap(),ESP.getHeapFragmentation());
+	prev_free_ram = ESP.getFreeHeap();
+	Serial.printf("Stations connected to soft-AP = %d\n", WiFi.softAPgetStationNum());
+  }
+  //void * m = malloc(32); //MALLOC BOMB for testing
+  //memset(m,0x41 ,32);//'A'
+  //Serial.print("Allocated at: 0x");Serial.println((uint32_t)m, HEX);
   if (ESP.getFreeHeap()<16000){
-	  dumpRAM();
+	  dumpRAM(0x14000/2, 0x14000); //dump second half of ram
+	  while(1);
   }
 }
 
@@ -745,24 +792,38 @@ void savesettings(){
 		outf.close();
 	}
 }
-void dumpRAM(){
+void dumpRAM(uint32_t start, uint32_t end){
 	//https://github.com/esp8266/esp8266-wiki/wiki/Memory-Map
 	//3FFE8000h 	dram0 	14000h 	RAM 	RW 	User data RAM. Available to applications.
 	//Start from bottom up?
 	#define RAMSTART 0x3FFE8000
 	#define RAMSIZE 0x14000
 	//uint32_t * ram_ptr = RAMSTART;
-	
-	for (uint32_t i = RAMSTART + (RAMSIZE/2); i< (RAMSTART+RAMSIZE); i=i+16){
+	char chbuf [20];
+	for (uint32_t i = RAMSTART + start; i< (RAMSTART+end); i=i+16){
 		Serial.print(i,HEX);
 		Serial.print(": ");
+		uint32_t chbptr = 0;
 		for (uint32_t j = 0; j < 4;j++){
-			uint32_t nowptr = RAMSTART+i+4*j;
-			Serial.print((*(RwReg*)(nowptr)),HEX);
+			uint32_t nowptr = i+4*j;
+			uint32_t ramval = (*(RwReg*)(nowptr));
+			//Serial.print(ramval,HEX);
+			Serial.printf("0x%08x",ramval);
 //			Serial.print(*(nowptr),HEX);
-			Serial.print(" ");
+			Serial.print("\t");
+			for (uint32_t k = 0; k <4 ;k++){
+				uint32_t charval = (ramval >> k*8) &0xff;
+				if (charval >=32 && charval <=126){
+					chbuf[chbptr] = charval;
+				}else{
+					chbuf[chbptr] = ' ';
+				}
+				chbptr++;
+			}
 		}
-		Serial.println("");
+		chbuf[chbptr] = 0;
+		Serial.println(chbuf);
+		if (i%128 == 0) yield();
 	}
 	
 }
