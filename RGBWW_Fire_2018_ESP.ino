@@ -60,7 +60,7 @@ const int capacity = 3096;
 //StaticJsonDocument<capacity> doc; //static is on stack, heap is max 4k so baaaad idea
 DynamicJsonDocument doc(4096); //on the heap, so hopefully better 
 String jsongradient = "";
-uint32_t calibratewhiteness(uint32_t inrgb);
+uint32_t calibratewhiteness(uint32_t inrgb,bool subtract);
 
 uint32_t last_web_update = 0x7FFFFFFF;
 uint32_t web_update_timeout = 60000;
@@ -254,12 +254,13 @@ const uint8_t CentreX =  (Width / 2) - 1;
 const uint8_t CentreY = (Height / 2) - 1;
 
 #define NUM_LEDS     64
-#define BRIGHTNESS    25
+#define BRIGHTNESS    255
 #define DBG 0
 #define PIN 4
 #define DIMFACTOR 1.4 // height/6 is good
 int delaytime = 20;
 int heatness = 178;
+bool subtractwhite = 0;
 //Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, PIN, NEO_GRBW + NEO_KHZ800);
 NeoPixelBus<NeoGrbwFeature,NeoEsp8266Dma800KbpsMethod> strip(64);
 uint32_t deltat = 0;
@@ -309,6 +310,7 @@ CRGBPalette16 Pal;
 
 //------------------------------------------HANDLE GET REQUESTS-----------------------------------
 PalettePoint WebGradient[16]; //80 bytes
+int webGradientSize = 16;
 void handlesetGradients() {
   jsongradient = server.arg("setGradient");
   Serial.printf("Setgradients received at %ld: ", millis());
@@ -328,6 +330,7 @@ void handlesetGradients() {
   //strcpy(objectname,"grad");
   //strcat(objectname, itoa(active));
   sprintf(objectname, "grad%d", active);
+  webGradientSize = 0;
   for (int handle = 0; handle < doc[objectname].size(); handle++) {
     //WebGradient[handle].pos = doc[objectname][handle]["pos"];
     uint8_t r = doc[objectname][handle]["r"];
@@ -339,12 +342,15 @@ void handlesetGradients() {
     #if DBG
 		Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
 	#endif
-
-    uint32_t calibcolor = calibratewhiteness(uint32color(r, g, b, w));
+	webGradientSize++;
+    uint32_t calibcolor = calibratewhiteness(uint32color(r, g, b, w),subtractwhite);
     WebGradient[handle].wrgb =  calibcolor;
     //WebGradient[handle].wrgb =  strip.Color(r,g,b,w);
     WebGradient[handle].pos = pos;
   }
+  int subw = doc["subtract"];
+  if (subw > 0) subtractwhite = 1 ; 
+  else subtractwhite = 0;
   sprintf(objectname, "grad%dspeed", active);
   int gradspeed = doc[objectname]; //[-13;+12]
   delaytime = 20 - gradspeed ;
@@ -408,7 +414,7 @@ PalettePoint WarmTorchFlash7p[7] = { //0 is black, 255 is full white
 
 
 
-uint32_t calibratewhiteness(uint32_t inrgb) { // example in color is (128,200,50,0)
+uint32_t calibratewhiteness(uint32_t inrgb, bool subtract) { // example in color is (128,200,50,0)
   // R152 G79 B21 MATCHES W64!!!!!!!
   ColorBGRW in = {inrgb};
   ColorBGRW ww64 = {uint32color(152, 79, 21, 64)};
@@ -417,9 +423,11 @@ uint32_t calibratewhiteness(uint32_t inrgb) { // example in color is (128,200,50
   //find max divisor
   uint16_t maxw = min(min((in.r * ww64.w) / ww64.r, (in.g * ww64.w) / ww64.g), min((in.b * ww64.w) / ww64.b, 255 - in.w));
   nc.w = min(255, in.w +  maxw);
-  nc.r = (in.r - ((maxw * ww64.r) / ww64.w));
-  nc.g = (in.g - ((maxw * ww64.g) / ww64.w));
-  nc.b = (in.b - ((maxw * ww64.b) / ww64.w));
+  if (subtract){
+	nc.r = (in.r - ((maxw * ww64.r) / ww64.w));
+	  nc.g = (in.g - ((maxw * ww64.g) / ww64.w));
+	  nc.b = (in.b - ((maxw * ww64.b) / ww64.w));
+  }
 
 #if DBG
   Serial.print(F("Calibrating color "));
@@ -471,7 +479,7 @@ void setup() {
   strip.Begin();  //serial.begin before strip.begin!
   //strip.setBrightness(BRIGHTNESS);
   //testcolors();
-  calibratewhiteness(0);
+  calibratewhiteness(0,1);
 
   SPIFFS.begin();
   {
@@ -565,7 +573,12 @@ void setup() {
   DBG_OUTPUT_PORT.println("HTTP server started");
   for (uint8_t i = 0; i < 4; i++) {
     WebGradient[i].wrgb = WarmTorch4p[i].wrgb;
-    WebGradient[i].wrgb = WarmTorch4p[i].pos;
+    WebGradient[i].pos = WarmTorch4p[i].pos;
+  }
+  for (uint8_t level = 0; level<255;level++){
+		Serial.printf("Level %d -> 0x%08x\n",level, getFromPalette(WebGradient,webGradientSize,level));
+		yield();
+	  
   }
 }
 
@@ -594,7 +607,7 @@ void loop() {
       }
     }
 	EVERY_N_MILLIS(4000){
-		Serial.printf("ESP.getFreeHeap()=%d  ESP.getHeapFragmentation()=%d ESP.getMaxFreeBlockSize()=%d\n",ESP.getFreeHeap(),ESP.getHeapFragmentation(),ESP.getMaxFreeBlockSize());
+		Serial.printf("ESP.getFreeHeap()=%d\n",ESP.getFreeHeap());
 		savesettings();
 	}
 }
@@ -705,32 +718,36 @@ void Fire2018() {
 
   //shift all the pixels forward, as we are missing 4 pixels out of 64 (only 60 pixels per meter of led strip!)
   for (uint8_t i = 0; i < 60; i++) {
-    strip.SetPixelColor(i, strip.GetPixelColor(i + 4));
+   // strip.SetPixelColor(i, strip.GetPixelColor(i + 4));
   }
   yield();
   strip.Show();
 
-  deltat = micros() - starttime; //takes about 10ms to update :/
+
   yield();
   // I hate this delay but with 8 bit scaling there is no way arround.
   // If the framerate gets too high the frame by frame scaling doesn´s work anymore.
   // Basically it does but it´s impossible to see then...
   uint32_t totalcurrent = 0;
   for (uint8_t y = 0; y < Height ; y++) {
+	
     for (uint8_t x = 0; x < Width; x++) {
       //Serial.print(heat[XY(x, y)]);
 	  RgbwColor rgbwc = strip.GetPixelColor(XY(x, y));
       uint32_t c = uint32color(rgbwc.R,rgbwc.G,rgbwc.B,rgbwc.W);
       uint8_t h = heat[XY(x, y)];
 #if DBG
-      Serial.print("Heat=" );
+      //Serial.print("Heat=" );
       Serial.print(h);
-      Serial.print(" x=");
-      Serial.print(x);
-      Serial.print(" y=");
-      Serial.print(y);
+      //Serial.print(" x=");
+      //Serial.print(x);
+      //Serial.print(" y=");
+      //Serial.print(y);
       Serial.print(' ');
+      Serial.print('/');
       printColorWRGB(c);
+      Serial.print('\t');
+	  yield();
 #endif
       //Serial.println("");
 
@@ -741,18 +758,19 @@ void Fire2018() {
       totalcurrent += (c & 0xff000000) >> 24;
       // Serial.print('\t');
     }
-    //Serial.println("");
+	#if DBG
+    Serial.println("");
+	#endif
   }
   EVERY_N_MILLIS(3000) {
 
 
     totalcurrent = totalcurrent / 25;//each 255 brightness is 10mA
     totalcurrent = (totalcurrent * BRIGHTNESS) / 255; //scale with hard coded brightness
-
+	deltat = micros() - starttime; //takes about 10ms to update :/
     //Serial.print("Average brightness = (max 255)");
-    Serial.print(totalcurrent);
-    Serial.print("mA dt_us=");
-    Serial.println(deltat);
+    Serial.printf("Cuurent = %i, deltat = %i\n", totalcurrent, deltat);
+
   }
 
 
@@ -762,14 +780,14 @@ void Fire2018() {
   yield();
   if (ESP.getFreeHeap() != prev_free_ram){
 	  
-	Serial.printf("Free=%d  Frag=%d\n",ESP.getFreeHeap(),ESP.getHeapFragmentation());
+	Serial.printf("Free=%d \n",ESP.getFreeHeap());
 	prev_free_ram = ESP.getFreeHeap();
 	Serial.printf("Stations connected to soft-AP = %d\n", WiFi.softAPgetStationNum());
   }
   //void * m = malloc(32); //MALLOC BOMB for testing
   //memset(m,0x41 ,32);//'A'
   //Serial.print("Allocated at: 0x");Serial.println((uint32_t)m, HEX);
-  if (ESP.getFreeHeap()<16000){
+  if (ESP.getFreeHeap()<6000){
 	  dumpRAM(0x14000/2, 0x14000); //dump second half of ram
 	  while(1);
   }

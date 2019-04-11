@@ -118,8 +118,9 @@
       </div>
 
 	  <div class ="grapick-cont">
-		<a href = "status.htm">HW Status </a> <a href = "edit.htm">Edit Files</a>
-		</div>
+		<a href = "status.htm">HW Status</a>   <a href = "edit.htm">Edit Files</a>
+		
+		<input type="checkbox" name="subtract" value = "subtract" id="subtract"> Subtractive whitening 
     </div>
 
     <!-- <script type="text/javascript" src = "file:///C:/Users/Peti/Documents/Arduino/RGBWW_Fire_2018_ESP/data/fire.js"></script> -->
@@ -158,7 +159,7 @@
 		return handlearray;
 	}
 
-  let gradients = {active:1,grad1 : "None", grad1speed : 0,grad2 : "None", grad2speed :0, grad3 : "None",grad3speed: 0, grad4 : "None", grad4speed:0, grad1heat:0, grad2heat:0, grad3heat:0, grad4heat:0,};
+  let gradients = {active:1,grad1 : "None", grad1speed : 0,grad2 : "None", grad2speed :0, grad3 : "None",grad3speed: 0, grad4 : "None", grad4speed:0, grad1heat:0, grad2heat:0, grad3heat:0, grad4heat:0,subtract:0};
   gradients = JSON.parse(defaultgradient);
   //----------------Fetch JSON defaults from server
 	/*let url = 'defaults.json';
@@ -245,14 +246,24 @@
 	} 
 	mygp.btn.addEventListener('click',mygp.activate);
 	mygp.speed.addEventListener('click',mygp.activate);
+	mygp.speed.addEventListener('input',mygp.activate);
 	mygp.heat.addEventListener('click',mygp.activate);
+	mygp.heat.addEventListener('input',mygp.activate);
 	return mygp;
   }
   let gp1 = createGrapick('1',gradients.grad1);
   let gp2 = createGrapick('2',gradients.grad2);
   let gp3 = createGrapick('3',gradients.grad3);
   let gp4 = createGrapick('4',gradients.grad4);
+  let subtract = document.getElementById("subtract");
 
+  subtract.addEventListener('input', function(){
+  if (subtract.checked == true){
+	gradients.subtract = 1;
+  }else{
+  gradients.subtract= 0;}
+	console.log("Subtract set to " + subtract.checked);
+  })
 
 	let gps = [gp1];
 

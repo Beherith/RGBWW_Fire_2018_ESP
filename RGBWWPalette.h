@@ -24,6 +24,7 @@ uint32_t interpolatergbw(uint32_t a, uint32_t b, int level) { // Byte order is 0
 uint32_t getFromPalette(struct PalettePoint *pp, uint8_t palettesize, uint8_t level) {
   if (palettesize == 1) return pp[0].wrgb; //handle single color palettes
   for (uint8_t i = 0; i < palettesize; i++) {
+  //Serial.printf("level=%i pp[%i].pos=%i pp{%i].wrgb = 0x%08x\n",level, i, pp[i].pos,i,pp[i].wrgb);
     if (pp[i].pos >= level) {
       //Serial.print(pp[i].pos);
       //Serial.print("pos level");
@@ -52,11 +53,11 @@ void printColorWRGB(uint32_t color) {
 
   Serial.print('R');
   Serial.print(colorpointer[2]);
-  Serial.print(" G");
+  Serial.print("\tG");
   Serial.print(colorpointer[1]);
-  Serial.print(" B");
+  Serial.print("\tB");
   Serial.print(colorpointer[0]);
-  Serial.print(" W");
-  Serial.println(colorpointer[3]);
+  Serial.print("\tW");
+  Serial.print(colorpointer[3]);
 
 }
