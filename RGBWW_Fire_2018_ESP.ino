@@ -351,7 +351,7 @@ void handlesetGradients() {
 		Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
 	#endif
 	Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
-	if (handle >= webGradientSize) break;
+	if (handle >= 16) break;
 	webGradientSize++;
     uint32_t calibcolor = calibratewhiteness(uint32color(r, g, b, w),subtractwhite);
     WebGradient[handle].wrgb =  calibcolor;
