@@ -34,7 +34,7 @@ const char* host = "torch1";
 const char* softapssid = "Torch1";
 
 IPAddress local_IP(192, 168, 4, 1);
-IPAddress gateway(192, 168, 4, 1);
+IPAddress gateway(192, 168, 4, 2);
 IPAddress subnet(255, 255, 255, 0);
 
 uint32_t reconnect_interval = 300000;
@@ -226,6 +226,15 @@ void handleFileList() {
   server.send(200, F("text/json"), output);
 }
 
+void listSpiffs() {
+    Dir dir = SPIFFS.openDir("/");
+    while (dir.next()) {
+      String fileName = dir.fileName();
+      size_t fileSize = dir.fileSize();
+      Serial.printf("FS File: %s, size: %s\n", fileName.c_str(), formatBytes(fileSize).c_str());
+    }
+    DBG_OUTPUT_PORT.printf("\n");
+}
 
 //-------------------------------------NEOPIXEL STUFF-------------------------------------
 //Info: // R152 G79 B21 MATCHES W64!!!!!!!
@@ -318,7 +327,6 @@ void handlesetGradients() {
   #if DBG
 	Serial.println(jsongradient);
   #endif
-  return;
   DeserializationError err = deserializeJson(doc, jsongradient);
   if (err) {
     Serial.print(F("deserializeJson() failed with code "));
@@ -337,11 +345,13 @@ void handlesetGradients() {
     uint8_t g = doc[objectname][handle]["g"];
     uint8_t b = doc[objectname][handle]["b"];
     int   pos = doc[objectname][handle]["pos"];
-    pos = (pos * 256) / 100;
+    pos = min(255,(pos * 256) / 100);
     uint8_t w = 0;
     #if DBG
 		Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
 	#endif
+	Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
+	if (handle >= webGradientSize) break;
 	webGradientSize++;
     uint32_t calibcolor = calibratewhiteness(uint32color(r, g, b, w),subtractwhite);
     WebGradient[handle].wrgb =  calibcolor;
@@ -351,6 +361,7 @@ void handlesetGradients() {
   int subw = doc["subtract"];
   if (subw > 0) subtractwhite = 1 ; 
   else subtractwhite = 0;
+  
   sprintf(objectname, "grad%dspeed", active);
   int gradspeed = doc[objectname]; //[-13;+12]
   delaytime = 20 - gradspeed ;
@@ -359,12 +370,9 @@ void handlesetGradients() {
 
   sprintf(objectname, "grad%dheat", active);
   int gradheat = doc[objectname];////[-13;+12]
-  heatness = min(255, 207 + 4 * gradheat);
   //heatness sensibly should go from 255 to 150
-
-
-
-  //TODO PARSE JSON
+  heatness = min(255, 207 + 4 * gradheat);
+  Serial.printf("Delay time set to %dms, heatness set to %d\n",delaytime,heatness);
   last_web_update = millis();
 }
 
@@ -427,6 +435,10 @@ uint32_t calibratewhiteness(uint32_t inrgb, bool subtract) { // example in color
 	nc.r = (in.r - ((maxw * ww64.r) / ww64.w));
 	  nc.g = (in.g - ((maxw * ww64.g) / ww64.w));
 	  nc.b = (in.b - ((maxw * ww64.b) / ww64.w));
+  }else{
+	  nc.r = in.r;
+	  nc.g = in.g;
+	  nc.b = in.b;
   }
 
 #if DBG
@@ -610,6 +622,17 @@ void loop() {
 		Serial.printf("ESP.getFreeHeap()=%d\n",ESP.getFreeHeap());
 		savesettings();
 	}
+	if (ESP.getFreeHeap() != prev_free_ram){
+		Serial.printf("Free=%d Stations connected to soft-AP = %d\n",ESP.getFreeHeap(), WiFi.softAPgetStationNum());
+		prev_free_ram = ESP.getFreeHeap();
+  }
+  //void * m = malloc(32); //MALLOC BOMB for testing
+  //memset(m,0x41 ,32);//'A'
+  //Serial.print("Allocated at: 0x");Serial.println((uint32_t)m, HEX);
+  if (ESP.getFreeHeap()<6000){
+	  dumpRAM(0x14000/2, 0x14000); //dump second half of ram
+	  while(1);
+  }
 }
 //--------------------------------------------DRAW FIRE---------------------------------------------------
 // here we go
@@ -769,7 +792,7 @@ void Fire2018() {
     totalcurrent = (totalcurrent * BRIGHTNESS) / 255; //scale with hard coded brightness
 	deltat = micros() - starttime; //takes about 10ms to update :/
     //Serial.print("Average brightness = (max 255)");
-    Serial.printf("Cuurent = %i, deltat = %i\n", totalcurrent, deltat);
+    Serial.printf("Current = %imA, deltat = %ius\n", totalcurrent, deltat);
 
   }
 
@@ -778,19 +801,7 @@ void Fire2018() {
   // y speed and the dim divisor, too.
   delay(delaytime);
   yield();
-  if (ESP.getFreeHeap() != prev_free_ram){
-	  
-	Serial.printf("Free=%d \n",ESP.getFreeHeap());
-	prev_free_ram = ESP.getFreeHeap();
-	Serial.printf("Stations connected to soft-AP = %d\n", WiFi.softAPgetStationNum());
-  }
-  //void * m = malloc(32); //MALLOC BOMB for testing
-  //memset(m,0x41 ,32);//'A'
-  //Serial.print("Allocated at: 0x");Serial.println((uint32_t)m, HEX);
-  if (ESP.getFreeHeap()<6000){
-	  dumpRAM(0x14000/2, 0x14000); //dump second half of ram
-	  while(1);
-  }
+
 }
 
 void savesettings(){
