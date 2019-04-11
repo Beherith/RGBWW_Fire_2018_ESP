@@ -195,35 +195,43 @@ void handleFileCreate() {
   server.send(200, F("text/plain"), "");
   path = String();
 }
+void handleReset() {
+  if (server.args() == 0) {
+    return server.send(500, F("text/plain"), "BAD ARGS");
+  }
+  String path = server.arg(0);
+  DBG_OUTPUT_PORT.print(F("handleFileCreate: ")); DBG_OUTPUT_PORT.println(path);
+  if (path == "/") {
+    return server.send(500, F("text/plain"), "BAD PATH");
+  }
+  if (SPIFFS.exists(path)) {
+    return server.send(500, F("text/plain"), "FILE EXISTS");
+  }
+  File file = SPIFFS.open(path, "w");
+  if (file) {
+    file.close();
+  } else {
+    return server.send(500, F("text/plain"), F("CREATE FAILED"));
+  }
+  server.send(200, F("text/plain"), "");
+  path = String();
+}
 
 void handleFileList() {
-  if (!server.hasArg("dir")) {
-    server.send(500, F("text/plain"), "BAD ARGS");
-    return;
+  //if (!server.hasArg("dir")) {
+  //  server.send(500, F("text/plain"), "BAD ARGS");
+  //  return;
+  // }
+  server.send(200, F("text/json"), "");
+  Serial.println(F("Resetting /default.js to /reset.js"));
+  File defaultfile = SPIFFS.open("/default.js","w");
+  File resetfile = SPIFFS.open("/reset.js","r");
+  while (resetfile.available()){
+	defaultfile.write(resetfile.read());
   }
-
-  String path = server.arg("dir");
-  DBG_OUTPUT_PORT.print(F("handleFileList: ")); DBG_OUTPUT_PORT.println( path);
-  Dir dir = SPIFFS.openDir(path);
-  path = String();
-
-  String output = "[";
-  while (dir.next()) {
-    File entry = dir.openFile("r");
-    if (output != "[") {
-      output += ',';
-    }
-    bool isDir = false;
-    output += "{\"type\":\"";
-    output += (isDir) ? "dir" : "file";
-    output += "\",\"name\":\"";
-    output += String(entry.name()).substring(1);
-    output += "\"}";
-    entry.close();
-  }
-
-  output += "]";
-  server.send(200, F("text/json"), output);
+  resetfile.close();
+  defaultfile.close();
+  Serial.println(F("Reset Complete!"));
 }
 
 void listSpiffs() {
@@ -350,10 +358,12 @@ void handlesetGradients() {
     #if DBG
 		Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
 	#endif
-	Serial.printf("Gradient %s handle %d R%d G%d B%d W%d pos%d\n", objectname, handle, r, g, b, w, pos);
 	if (handle >= 16) break;
 	webGradientSize++;
     uint32_t calibcolor = calibratewhiteness(uint32color(r, g, b, w),subtractwhite);
+	Serial.printf("Gradient %s handle %d pos%d", objectname, handle, pos);
+	printColorWRGB(calibcolor);
+	Serial.println("");
     WebGradient[handle].wrgb =  calibcolor;
     //WebGradient[handle].wrgb =  strip.Color(r,g,b,w);
     WebGradient[handle].pos = pos;
@@ -510,11 +520,12 @@ void setup() {
   //WIFI INIT
   DBG_OUTPUT_PORT.printf("Connecting to %s\n", ssid);
   if (String(WiFi.SSID()) != String(ssid)) {
-    WiFi.mode(WIFI_AP);
-    //WiFi.begin(ssid, password);
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(ssid, password);
   }
 
   int attempts = 0;
+  
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     DBG_OUTPUT_PORT.print(".");
@@ -545,6 +556,7 @@ void setup() {
   //SERVER INIT
   //list directory
   server.on("/list", HTTP_GET, handleFileList);
+  server.on("/reset", HTTP_GET, handleReset);
   //load editor
   server.on("/edit", HTTP_GET, []() {
     if (!handleFileRead("/edit.htm")) {
@@ -620,7 +632,10 @@ void loop() {
     }
 	EVERY_N_MILLIS(4000){
 		Serial.printf("ESP.getFreeHeap()=%d\n",ESP.getFreeHeap());
-		savesettings();
+		if ((last_web_update + web_update_timeout) < millis()) {
+			if (savesettings());
+			last_web_update = 0x7FFFFFFF;
+		}
 	}
 	if (ESP.getFreeHeap() != prev_free_ram){
 		Serial.printf("Free=%d Stations connected to soft-AP = %d\n",ESP.getFreeHeap(), WiFi.softAPgetStationNum());
@@ -741,7 +756,7 @@ void Fire2018() {
 
   //shift all the pixels forward, as we are missing 4 pixels out of 64 (only 60 pixels per meter of led strip!)
   for (uint8_t i = 0; i < 60; i++) {
-   // strip.SetPixelColor(i, strip.GetPixelColor(i + 4));
+     strip.SetPixelColor(i, strip.GetPixelColor(i + 4));
   }
   yield();
   strip.Show();
@@ -804,22 +819,30 @@ void Fire2018() {
 
 }
 
-void savesettings(){
-	if ((last_web_update + web_update_timeout) < millis()) {
-		Serial.print(F("Updating files from web change: "));
-		Serial.println(millis());
-		last_web_update = 0x7FFFFFFF; //so we dont keep saving shit
-		char fn[40];
-		sprintf(fn, "/saved_%09d.js", millis());
-		File outf = SPIFFS.open(fn, "w");
-		if (!outf) {
-			Serial.printf("Failed to open file %s\n", fn);
-			return;
-		}
-		if (outf.print(jsongradient)) Serial.printf("File %s written sucessfully\n", fn);
-		else Serial.printf("File %s write failed\n", fn);
-		outf.close();
+bool savesettings(){
+	Serial.print(F("Updating files from web change: "));
+	Serial.println(millis());
+	char fn[40];
+	sprintf(fn, "/saved_%09d.js", millis());
+	File outf = SPIFFS.open(fn, "w");
+	if (!outf) {
+		Serial.printf("Failed to open file %s\n", fn);
+		return false;
 	}
+	if (outf.print(jsongradient)) Serial.printf("File %s written sucessfully\n", fn);
+	else Serial.printf("File %s write failed\n", fn);
+	outf.close();
+	File defaultfile = SPIFFS.open("/default.js","w");
+	if (!defaultfile){
+		Serial.printf(F("Failed to open /default.js for writing\n"));
+		return false;
+	}
+	defaultfile.write("let defaultgradient = '");
+	defaultfile.write(jsongradient);
+	defaultfile.write("';\n");
+	defaultfile.close();
+	Serial.println(F("Wrote settings to /default.js");
+	return true;
 }
 void dumpRAM(uint32_t start, uint32_t end){
 	//https://github.com/esp8266/esp8266-wiki/wiki/Memory-Map

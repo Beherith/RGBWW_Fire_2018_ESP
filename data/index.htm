@@ -121,6 +121,7 @@
 		<a href = "status.htm">HW Status</a>   <a href = "edit.htm">Edit Files</a>
 		
 		<input type="checkbox" name="subtract" value = "subtract" id="subtract"> Subtractive whitening 
+		<a href = "reset">Reset</a>
     </div>
 
     <!-- <script type="text/javascript" src = "file:///C:/Users/Peti/Documents/Arduino/RGBWW_Fire_2018_ESP/data/fire.js"></script> -->
@@ -239,7 +240,7 @@
 	mygp.activate = function activate(){
 		document.body.style.backgroundImage = mygp.getSafeValue();
 		console.log("Activate:"+mygp.id);
-		gradients.active = 1;
+		gradients.active = mygp.id;
 		gradients["grad"+mygp.id+"speed"] = Math.floor(mygp.speed.value*255.0/100.0);
 		gradients["grad"+mygp.id+"heat"] = Math.floor(mygp.heat.value*255.0/100.0);
 		sendGradientsJSON("noneyet"+mygp.id);
@@ -263,6 +264,7 @@
   }else{
   gradients.subtract= 0;}
 	console.log("Subtract set to " + subtract.checked);
+	sendGradientsJSON("Subtractchange");
   })
 
 	let gps = [gp1];
