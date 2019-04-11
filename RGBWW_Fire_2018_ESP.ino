@@ -370,8 +370,8 @@ void handlesetGradients() {
 
   sprintf(objectname, "grad%dheat", active);
   int gradheat = doc[objectname];////[-13;+12]
-  //heatness sensibly should go from 255 to 150
-  heatness = min(255, 207 + 4 * gradheat);
+  //heatness sensibly should go from 255 to 55
+  heatness = min(255, 155 + 8 * gradheat);
   Serial.printf("Delay time set to %dms, heatness set to %d\n",delaytime,heatness);
   last_web_update = millis();
 }
