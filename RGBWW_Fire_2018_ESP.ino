@@ -223,26 +223,22 @@ void handleFileCreate() {
   server.send(200, F("text/plain"), "");
   path = String();
 }
-void handleReset() {
-  if (server.args() == 0) {
-    return server.send(500, F("text/plain"), "BAD ARGS");
+bool handleReset() {
+  server.send(200, F("text/json"), "Reset OK");
+  Serial.println(F("Resetting /default.js to /reset.js"));
+  File defaultfile = SPIFFS.open("/default.js","w");
+  File resetfile = SPIFFS.open("/reset.js","r");
+  if ( (!resetfile) || (!defaultfile)){
+	  Serial.println(F("Failed top open reset.js or default.js. Reset failed."));
+	  return 0;
   }
-  String path = server.arg(0);
-  DBG_OUTPUT_PORT.print(F("handleFileCreate: ")); DBG_OUTPUT_PORT.println(path);
-  if (path == "/") {
-    return server.send(500, F("text/plain"), "BAD PATH");
+  while (resetfile.available()){
+	defaultfile.print(resetfile.read());
   }
-  if (SPIFFS.exists(path)) {
-    return server.send(500, F("text/plain"), "FILE EXISTS");
-  }
-  File file = SPIFFS.open(path, "w");
-  if (file) {
-    file.close();
-  } else {
-    return server.send(500, F("text/plain"), F("CREATE FAILED"));
-  }
-  server.send(200, F("text/plain"), "");
-  path = String();
+  resetfile.close();
+  defaultfile.close();
+  Serial.println(F("Reset Complete!"));
+  return 1;
 }
 
 void handleFileList() {
