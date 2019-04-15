@@ -30,8 +30,8 @@
 const char* ssid = "BRFK-NNyI";
 const char* password = "ingyenwifi";
 const char* host = "torch1";
-
 const char* softapssid = "Torch1";
+const char* wifiConfFile = "/wifi.conf";
 
 IPAddress local_IP(192, 168, 4, 1);
 IPAddress gateway(192, 168, 4, 2);
@@ -64,6 +64,34 @@ uint32_t calibratewhiteness(uint32_t inrgb,bool subtract);
 
 uint32_t last_web_update = 0x7FFFFFFF;
 uint32_t web_update_timeout = 60000;
+
+bool loadwificonf(char * ssid_ptr, char * pwd_ptr){ //pass buffers at least ssid and pwd sized to this func.
+	if (!SPIFFS.exists(wifiConfFile)){
+		Serial.println(F("wifi.conf file does not exist!"));
+		return 0;
+	}
+	File file = SPIFFS.open(wifiConfFile,"r");
+	if (!file){
+		Serial.println(F("Failed to open wifi.conf"));
+		return 0;
+	}
+	char ssidbuf[50];
+	char pwdbuf[50];
+	memset(ssidbuf,0,50);
+	memset(pwdbuf,0,50);
+	char filebuf[50];
+	memset(filebuf,0,50);
+	int n = file.readBytesUntil('\n',filebuf,sizeof(filebuf));
+	sscanf(filebuf,"ssid=%40c",ssidbuf);
+	memset(filebuf,0,50);
+	    n = file.readBytesUntil('\n',filebuf,sizeof(filebuf));
+	sscanf(filebuf,"password=%40c",pwdbuf);
+	file.close();
+	Serial.printf("Loaded ssid=%s pwd=%s from %s\n",ssidbuf,pwdbuf,wifiConfFile);
+	strcpy(ssid_ptr,ssidbuf);
+	strcpy(pwd_ptr,pwdbuf);
+	return 1;
+}
 
 //format bytes
 String formatBytes(size_t bytes) {
@@ -518,11 +546,19 @@ void setup() {
 
 
   //WIFI INIT
+  char ssid_buf[30];
+  char pwd_buf[30];
+  
+
   DBG_OUTPUT_PORT.printf("Connecting to %s\n", ssid);
-  if (String(WiFi.SSID()) != String(ssid)) {
+ // if (String(WiFi.SSID()) != String(ssid)) {
     WiFi.mode(WIFI_AP_STA);
-    WiFi.begin(ssid, password);
-  }
+	if (loadwificonf(ssid_buf,pwd_buf)){
+		WiFi.begin(ssid_buf, pwd_buf);	
+	}else{
+		WiFi.begin(ssid, password);
+	}
+  //}
 
   int attempts = 0;
   
@@ -599,11 +635,13 @@ void setup() {
     WebGradient[i].wrgb = WarmTorch4p[i].wrgb;
     WebGradient[i].pos = WarmTorch4p[i].pos;
   }
+  #if DBG
   for (uint8_t level = 0; level<255;level++){
 		Serial.printf("Level %d -> 0x%08x\n",level, getFromPalette(WebGradient,webGradientSize,level));
 		yield();
 	  
   }
+  #endif
 }
 
 //-----------------------------------------------LOOP-----------------------------------------------------
@@ -834,14 +872,14 @@ bool savesettings(){
 	outf.close();
 	File defaultfile = SPIFFS.open("/default.js","w");
 	if (!defaultfile){
-		Serial.printf(F("Failed to open /default.js for writing\n"));
+		Serial.print(F("Failed to open /default.js for writing\n"));
 		return false;
 	}
-	defaultfile.write("let defaultgradient = '");
-	defaultfile.write(jsongradient);
-	defaultfile.write("';\n");
+	defaultfile.print("let defaultgradient = '");
+	defaultfile.print(jsongradient);
+	defaultfile.print("';\n");
 	defaultfile.close();
-	Serial.println(F("Wrote settings to /default.js");
+	Serial.println(F("Wrote settings to /default.js"));
 	return true;
 }
 void dumpRAM(uint32_t start, uint32_t end){
