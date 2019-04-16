@@ -546,13 +546,16 @@ void setup() {
   char pwd_buf[30];
   
 
+  WiFi.setAutoReconnect(true);
   DBG_OUTPUT_PORT.printf("Connecting to %s\n", ssid);
  // if (String(WiFi.SSID()) != String(ssid)) {
     WiFi.mode(WIFI_AP_STA);
 	if (loadwificonf(ssid_buf,pwd_buf)){
+		Serial.printf("Connecting to %s pw %s.\n",ssid_buf,pwd_buf);
 		WiFi.begin(ssid_buf, pwd_buf);	
 	}else{
 		WiFi.begin(ssid, password);
+		Serial.printf("Connecting to %s pw %s.\n",ssid,password);
 	}
   //}
 
@@ -562,7 +565,10 @@ void setup() {
     delay(500);
     DBG_OUTPUT_PORT.print(".");
     attempts++;
-    if (attempts > 10) break;
+    if (attempts > 10) {
+		Serial.println(F("Failed to connect to router"));
+		break;
+	}
   }
 
   Serial.print(F("Setting soft-AP configuration ... "));
