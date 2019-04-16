@@ -242,20 +242,30 @@ bool handleReset() {
 }
 
 void handleFileList() {
-  //if (!server.hasArg("dir")) {
-  //  server.send(500, F("text/plain"), "BAD ARGS");
-  //  return;
-  // }
-  server.send(200, F("text/json"), "");
-  Serial.println(F("Resetting /default.js to /reset.js"));
-  File defaultfile = SPIFFS.open("/default.js","w");
-  File resetfile = SPIFFS.open("/reset.js","r");
-  while (resetfile.available()){
-	defaultfile.write(resetfile.read());
+ if (!server.hasArg("dir")) {
+    server.send(500, F("text/plain"), "BAD ARGS");
+    return;
   }
-  resetfile.close();
-  defaultfile.close();
-  Serial.println(F("Reset Complete!"));
+
+  String path = server.arg("dir");
+  DBG_OUTPUT_PORT.print(F("handleFileList: ")); DBG_OUTPUT_PORT.println( path);
+  Dir dir = SPIFFS.openDir(path);
+  path = String();
+
+  String output = "[";
+  while (dir.next()) {
+    File entry = dir.openFile("r");
+    if (output != "[") {
+      output += ',';
+    }
+    bool isDir = false;
+    output += "{\"type\":\"";
+    output += (isDir) ? "dir" : "file";
+    output += "\",\"name\":\"";
+    output += String(entry.name()).substring(1);
+    output += "\"}";
+	entry.close();
+	}
 }
 
 void listSpiffs() {
@@ -670,17 +680,17 @@ void loop() {
 		}
       }
     }
-	EVERY_N_MILLIS(4000){
-		Serial.printf("ESP.getFreeHeap()=%d\n",ESP.getFreeHeap());
+	EVERY_N_MILLIS(10000){
+		//Serial.printf("ESP.getFreeHeap()=%d\n",ESP.getFreeHeap());
+		Serial.printf("Free=%d Stations connected to soft-AP = %d\n",ESP.getFreeHeap(), WiFi.softAPgetStationNum());
 		if ((last_web_update + web_update_timeout) < millis()) {
 			if (savesettings());
 			last_web_update = 0x7FFFFFFF;
 		}
 	}
-	if (ESP.getFreeHeap() != prev_free_ram){
-		Serial.printf("Free=%d Stations connected to soft-AP = %d\n",ESP.getFreeHeap(), WiFi.softAPgetStationNum());
-		prev_free_ram = ESP.getFreeHeap();
-  }
+	//if (ESP.getFreeHeap() != prev_free_ram){
+	//	prev_free_ram = ESP.getFreeHeap();
+	//}
   //void * m = malloc(32); //MALLOC BOMB for testing
   //memset(m,0x41 ,32);//'A'
   //Serial.print("Allocated at: 0x");Serial.println((uint32_t)m, HEX);
@@ -840,7 +850,7 @@ void Fire2018() {
     Serial.println("");
 	#endif
   }
-  EVERY_N_MILLIS(3000) {
+  EVERY_N_MILLIS(10000) {
 
 
     totalcurrent = totalcurrent / 25;//each 255 brightness is 10mA
